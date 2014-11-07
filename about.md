@@ -8,4 +8,4 @@ R, SQL, DW, BI
 
 ### Contact me
 
-[J.Gorecki@wit.edu.pl](mailto:J.Gorecki@wit.edu.pl)
+`J.Gorecki@wit.edu.pl`
