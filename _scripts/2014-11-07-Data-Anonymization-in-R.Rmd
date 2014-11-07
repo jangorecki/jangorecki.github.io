@@ -1,0 +1,190 @@
+---
+layout: post
+title: Data anonymization in R
+tags: R digest data.table
+---
+
+# Use cases
+
+* Public reports.  
+* Public data sharing, e.g. R packages download logs from CRAN's RStudio mirror - [cran-logs.rstudio.com](http://cran-logs.rstudio.com/) - mask ip addresses.
+* Reports or data sharing for external vendor.
+* Development works can operate on anonymized PRODUCTION data.  
+Manually or semi-manually populated data can often brings some new issue after migration to PRODUCTION data.  
+Such anonymized PRODUCTION data can be quite handy for the devs.  
+
+# Dependencies
+
+```{r init, echo=c(1)}
+suppressPackageStartupMessages({
+  library(data.table)
+  library(digest)
+  library(knitr) # used only for post creation
+})
+# # produce md
+# knitr::knit("2014-11-07-Data-Anonymization-in-R.Rmd")
+opts_chunk$set(collapse=TRUE, comment="#>", cache=FALSE)
+kable <- function(x, ..., digits=2, longtable=TRUE, col.names=gsub("\\b([a-z])", "\\U\\1",gsub("_"," ",colnames(x)), perl=TRUE)) knitr::kable(x=x, ..., digits=digits, longtable=longtable, col.names=col.names)
+set.seed(1)
+```
+
+# Sample of survey data
+
+Anonymize sensitive information in survey data, data storage in a single table.
+```{r data_SURV, echo=FALSE}
+SURV <- list()
+SURV[[length(SURV)+1]] <- data.table(city = "London",postal_code = "SW1H 0QW",address = "Silk Road 17",
+                                     name = "John Lennon",sex = "M",
+                                     age = 48L,height = 176,weight = 94,score = 3L)
+SURV[[length(SURV)+1]] <- data.table(city = "Cardiff",postal_code = "CF23 9AE",address = "Queen Road 19",
+                                     name = "Edward Snowden",sex = "M",
+                                     age = 55L,height = 185,weight = 74,score = 2L)
+SURV[[length(SURV)+1]] <- data.table(city = "London",postal_code = "SW1P 3BU",address = "Edinburgh Road 19",
+                                     name = "John Kennedy",sex = "M",
+                                     age = 46L,height = 156,weight = 84,score = 1L)
+SURV[[length(SURV)+1]] <- data.table(city = "London",postal_code = "SW1P 3BU",address = "Cardiff Road 21",
+                                     name = "Mahatma Gandhi",sex = "M",
+                                     age = 56L,height = 186,weight = 54,score = 5L)
+SURV[[length(SURV)+1]] <- data.table(city = "Cardiff",postal_code = "CF23 9AE",address = "King Road 10",
+                                     name = "Nelson Mandela",sex = "M",
+                                     age = 61L,height = 181,weight = 84,score = 2L)
+SURV[[length(SURV)+1]] <- data.table(city = "London",postal_code = "SW1P 2EE",address = "Cardiff Road 23",
+                                     name = "Vandana Shiva",sex = "F",
+                                     age = 41L,height = 192,weight = 64,score = 5L)
+SURV[[length(SURV)+1]] <- data.table(city = "London",postal_code = "SW1P 2EE",address = "Cardiff Road 23",
+                                     name = "Yasser Arafat",sex = "M",
+                                     age = 32L,height = 190,weight = 85,score = 2L)
+SURV[[length(SURV)+1]] <- data.table(city = "Cardiff",postal_code = "CF23 9AE",address = "Queen Road 9",
+                                     name = "Rachel Corrie",sex = "F",
+                                     age = 80L,height = 155,weight = 77,score = 3L)
+SURV[[length(SURV)+1]] <- data.table(city = "Glasgow",postal_code = "G40 3AS",address = "Simple Road 11",
+                                     name = "Bob Marley",sex = "M",
+                                     age = 53L,height = 180,weight = 71,score = 2L)
+SURV <- rbindlist(SURV)
+```
+```{r preview_SURV}
+# pretty print
+kable(head(SURV))
+```
+
+# Anonymize function
+
+Function will calculate hashes only for unique inputs and return vector of masked inputs.  
+My version will use `digest(x, algo="crc32")` because it fits better into html tables, algo `crc32` is not really secure.  
+Read `?digest::digest` for supported `algo`, also consider to salt your input vector, e.g. `x=paste0("prefix",x,"suffix")`.  
+Performance improvement possible using `Rcpp` / `C`: [digest #2](https://github.com/eddelbuettel/digest/issues/2).
+```{r anonymize_FUN, echo=TRUE, eval=TRUE}
+anonymize <- function(x, algo="crc32"){
+  unq_hashes <- vapply(unique(x), function(object) digest(object, algo=algo), FUN.VALUE="", USE.NAMES=TRUE)
+  unname(unq_hashes[x])
+}
+```
+
+# Anonymize survey data
+
+We will keep *city* and *sex* fields unmasked.
+```{r anonymize_SURV, echo=TRUE}
+# choose columns to mask
+cols_to_mask <- c("name","address","postal_code")
+# backup original data
+SURV_ORG <- copy(SURV)
+# anonymize
+SURV[,cols_to_mask := lapply(.SD, anonymize),.SDcols=cols_to_mask,with=FALSE]
+# pretty print
+kable(head(SURV))
+```
+
+# Why not just random data or integer sequence
+
+When using the `digest` function to hide sensitive data you:
+
+* keep rows distribution:  
+aggregates by masked columns will still match to aggregates on original columns, see simple grouping below:
+```{r anonymize_SURV_grouping}
+SURV_ORG[,.(.N,mean_age=mean(age),mean_score=mean(score)),by=.(city,postal_code)
+         ][,kable(.SD)]
+SURV[,.(.N,mean_age=mean(age),mean_score=mean(score)),by=.(city,postal_code)
+     ][,kable(.SD)]
+```
+* keep relationships on equi joins:  
+if `t1.col1 == t2.col4` TRUE then also `digest(t1.col1) == digest(t2.col4)` TRUE  
+Example in next section below.
+
+# Sample of sales data
+
+Anonymize relational data in sales data, data normalized into *SALES* and *CUSTOMER* tables.
+```{r SALES, echo=FALSE}
+CUSTOMER <- copy(SURV_ORG[,.(customer_uid = paste("CUST",.I,sep="_"),city,postal_code,address,name,sex)])
+setkey(CUSTOMER,customer_uid)
+N <- 100
+SALES <- data.table(customer_uid=sample(CUSTOMER$customer_uid, size=N, replace=TRUE), product_name=paste0(sample(letters,N,TRUE),sample(letters,N,TRUE),sample(letters,N,TRUE)), transaction_date=sample(seq(Sys.Date()-30,Sys.Date(),by=1),N,TRUE), quantity=quantity<-sample(1:60,50,TRUE), value=quantity*sample(5:20,50,TRUE))
+```
+
+```{r preview_SALES}
+kable(head(SALES,4))
+kable(head(CUSTOMER,2))
+```
+```{r SALES_join}
+# join
+kable(head(
+  CUSTOMER[SALES]
+))
+```
+```{r SALES_join_aggr}
+# join and aggregate
+kable(head(
+  CUSTOMER[SALES][,.(quantity = sum(quantity),value = sum(value)),by=.(city,postal_code)]
+))
+```
+
+# Anonymize sales data
+
+```{r anonymize_SALES}
+SALES[, customer_uid := anonymize(customer_uid)]
+cols_to_mask <- c("customer_uid","name","address","postal_code")
+CUSTOMER[,cols_to_mask := lapply(.SD, anonymize),.SDcols=cols_to_mask,with=FALSE]
+setkey(CUSTOMER,customer_uid)
+```
+
+```{r preview_anonymize_SALES}
+# preview result
+kable(head(CUSTOMER,2))
+kable(head(SALES,2))
+```
+
+```{r anonymize_SALES_join}
+# datasets will still join correctly even on masked columns
+kable(head(
+  CUSTOMER[SALES]
+))
+```
+
+```{r anonymize_SALES_join_aggr}
+# also the aggregates on masked columns will match to the origin
+kable(head(
+    CUSTOMER[SALES][,.(quantity = sum(quantity),value = sum(value)),by=.(city,postal_code)]
+))
+```
+
+# Reproduce from Rmd
+
+Script used to produce this post is available in the github repo (link in the page footer) as `Rmd` file and can be easily reproduced locally in R (required [knitr](http://cran.r-project.org/web/packages/knitr/index.html) or [rmarkdown](http://cran.r-project.org/web/packages/rmarkdown/index.html)) to any format (`md`, `html`, `pdf`, `docx`).
+```{r reproduce_Rmd, eval=FALSE}
+# html output
+rmarkdown::render("2014-11-07-Data-Anonymization-in-R.Rmd", html_document())
+# markdown file used as current post
+knitr::knit("2014-11-07-Data-Anonymization-in-R.Rmd")
+```
+
+# Minimal script
+
+Minimal script example on survey data as `SURV_ORG` data.table:
+
+```{r min_script, eval=FALSE}
+anonymize <- function(x, algo="crc32"){
+  unq_hashes <- vapply(unique(x), function(object) digest(object, algo=algo), FUN.VALUE="", USE.NAMES=TRUE)
+  unname(unq_hashes[x])
+}
+cols_to_mask <- c("name","address","postal_code")
+SURV_ORG[, cols_to_mask := lapply(.SD, anonymize), .SDcols=cols_to_mask, with=FALSE][]
+```
