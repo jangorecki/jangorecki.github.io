@@ -1,0 +1,79 @@
+---
+layout: post
+title: shinyData - GUI for data analysis and reporting
+tags: R BI shiny
+---
+
+Some people find very hard to start using R because it has no GUI.  
+There exists [some](http://www.rcommander.com/) GUIs which offers some of the functionality of R.  
+In this post I would like to focus on one such GUI, a very new shiny application called [shinyData](https://github.com/yindeng/shinyData).  
+I hope the app will make it easier for some to get into R environment.  
+Also it can reduce development time of analysis and reports for existing R users.  
+
+
+
+## shinyData
+
+The shiny app is well described in [this](https://shinydata.wordpress.com/2015/02/13/intro/) post already. In my post I will make a live test of it on my sales data.  
+App is hosted on slow shinyapps.io so I would recommend to run it locally. It requires/recommends particular version of dependencies, I will use new library:  
+
+
+```r
+library(devtools)
+lib <- paste(getwd(),"shinyData_lib",sep="/")
+dir.create(lib)
+with_lib(lib,{
+  install_github("trestletech/shinyTree@522f8a7e28565bec0f634faf5aa1e75da247de44")
+  install_github("trestletech/shinyAce@a2268d545e0ea30eb44c9dca517aec1165b06a51")
+  install_github("ebailey78/shinyBS", ref = "shinyBS3")
+  install_github("AnalytixWare/ShinySky@15c29bec4e7c5e694625e571656515a8ace7f376")
+  install_github("yindeng/shinyData@v0.1.1")
+  library("shinyData")
+  shinyData()
+})
+```
+
+## shinyData live
+
+Once you've launched app you can see a *projects* page. You can choose some examples, I will skip to *data* tab as I prefer to load own data from csv file. Yet very useful feature is ability to save project and load it later. I highly recommend to use that feature as it costs nothing and may save your work.  
+
+### Data
+
+I have csv of randomly populated sales data dimensioned by currency, geography and time. Once I've loaded data I see its preview. App will automatically recognize measures in my dataset.  
+
+![data](https://cloud.githubusercontent.com/assets/3627377/6740780/b63b8e00-ce7a-11e4-981a-31dcb1d8c4b0.png)
+
+### Visualize
+
+The most interesting part is to produce some information from the data.  
+First I need to choose the data, then I can start to do mapping between columns from dataset to the elements on plot, particularly the [ggplot2](https://github.com/hadley/ggplot2).  
+You can make multiple sheets of visualization, I will create two.  
+  
+  
+#### I've put time on X axis and value on Y axis, values are grouped into division name using colors and organized into the panels by region and currency type
+
+![input](https://cloud.githubusercontent.com/assets/3627377/6740770/99f99296-ce7a-11e4-9c2d-16068a174637.png)
+
+#### Results can looks like
+
+![by_region_currency_type](https://cloud.githubusercontent.com/assets/3627377/6740793/c5c58de4-ce7a-11e4-8d35-dad346a73ce5.png)
+
+#### One more plot with year on X axis grouped into division names, value on Y axis
+
+![by_devision_year](https://cloud.githubusercontent.com/assets/3627377/6740816/eb78c5ba-ce7a-11e4-9da6-6f7076ed58ac.png)
+
+### Presentation
+
+I have my two sheets of visualizations so I can try to build some report based on them.  
+Presentation tab combines a plaintext (markdown) editor and gives ability to nest elements from R, in this case also the products of *visualization*.  
+This is simply what *rmarkdown* package do, yet you don't need to know rmarkdown. Write the text as in the notepad and add your visualization sheets by click on *Insert Sheet* element on the left sidebar.  
+
+Below is the content of the report that I'm going to produce.  
+Important to note: *rmarkdown* gives ability to render your documents into various format: html, pdf, word, markdown, etc.  
+
+![reporting](https://cloud.githubusercontent.com/assets/3627377/6740835/0517c4a8-ce7b-11e4-8645-00e8de828023.png)
+
+## Summary
+
+shinyData is a well built shinyApp which can make the life easier for some R user, and for new ones limit the learning curve to minimum still giving possibility to produce some nice reports.  
+Personally I prefer to work on fully reproducible scripts, so for me shinyData is more a presentation of capabilities which R, shiny and open source community can bring.  
