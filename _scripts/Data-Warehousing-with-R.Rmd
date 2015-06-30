@@ -1,0 +1,426 @@
+---
+title: "Data Warehousing"
+subtitle: "with R"
+author: "Jan Gorecki"
+date: "2015-06-29"
+output: 
+  ioslides_presentation
+---
+
+```{r init, echo=FALSE, message=FALSE}
+knitr::opts_chunk$set(comment = "#", error = TRUE, tidy = FALSE, cache = FALSE, collapse = TRUE, eval = TRUE)
+library(data.table)
+options("datatable.showProgress" = FALSE)
+```
+
+## What is R?
+
+- programming language
+- environment for statistical computing and graphics
+- 20 years as open source project
+    - easy to write extensions (packages)
+    - thousands of packages
+- some of R language features
+    - [lazy loading](https://en.wikipedia.org/wiki/Lazy_loading)
+    - [lazy evalution](https://en.wikipedia.org/wiki/Lazy_evaluation)
+    - [computing on the language](http://cran.r-project.org/doc/manuals/r-release/R-lang.html#Computing-on-the-language)
+
+The presentation is going to review R packages which can turn R into ETL processing engine.
+
+# Core packages for ETL
+
+## Extraction from databases
+
+Extraction is performed by native drivers, JDBC or ODBC connection.  
+
+Some of supported databases:  
+
+    Oracle, MySQL / MariaDB, PostgreSQL, SQLite, SQLserver, Teradata, Informix,
+    DB2, SAP HANA, SAP Adaptive Server (Sybase), Access, Vertica, 
+    Cassandra, MongoDB, HBase, Hive, and more...
+
+Core packages for extraction, each of them unifies calls to particular drivers.  
+
+- [DBI](https://github.com/rstats-db/DBI): usually for native drivers delivered by separate package (e.g. [ROracle](http://www.oracle.com/technetwork/database/database-technologies/r/roracle/overview/index.html), [RMySQL](https://github.com/rstats-db/RMySQL), [RPostgreSQL](https://code.google.com/p/rpostgresql/), [RSQLite](https://github.com/rstats-db/RSQLite) )
+- [RJDBC](http://www.rforge.net/RJDBC/): any jdbc driver, easy setup just by path to driver file
+- [RODBC](http://cran.r-project.org/web/packages/RODBC/index.html): any odbc driver
+
+```{r init_data_setup, echo=FALSE, results='hide', message=FALSE}
+if(file.exists("src_data.csv")) file.remove("src_data.csv")
+sales_src1 <- data.table(time_code = c("20150630", "20150630", "20150630", "20150631", "20150631", "20150701", "20150701"),
+                         prod_code = c(10L, 12L, 12L, 10L, 12L, 10L, 11L),
+                         quantity = c(125L, 24L, 78L, 131L, 104L, 119L, 194L))
+sales_src2 <- data.table(time_code = c("20150701", "20150702"),
+                         prod_code = c(10L, 12L),
+                         quantity = c(102L, 97L))
+write.table(sales_src1, file="src_data1.csv", col.names=TRUE, row.names=FALSE, sep=",")
+write.table(sales_src2, file="src_data2.csv", col.names=TRUE, row.names=FALSE, sep=",")
+prices <- data.table(prod_code = c(10L,12L,10:12), month_code = c(rep("201506",2L),rep("201507",3)), price = c(21.5,31,24,39.5,32))
+library(RPostgreSQL)
+DBIconn <- dbConnect(PostgreSQL(), host="192.168.56.101", port="5432", dbname="rdb", user="ruser", password="userpassr")
+sapply(c("prices"="prices","output_dbi"="output_dbi","output_odbc"="output_odbc","sales"="sales"), function(tbl) try(dbSendQuery(DBIconn, paste0("drop table \"", tbl, "\";")), silent=TRUE))
+dbWriteTable(DBIconn, "prices", prices, append=FALSE, row.names=FALSE)
+dbDisconnect(DBIconn)
+rm(sales_src1, sales_src2, prices, DBIconn)
+```
+
+## Extraction examples DBI
+
+```{r e_dbi, message=FALSE}
+library(RPostgreSQL)
+DBIconn <- dbConnect(PostgreSQL(), 
+                     host="192.168.56.101", 
+                     port="5432", 
+                     dbname="rdb", 
+                     user="ruser", 
+                     password="userpassr")
+dbGetQuery(DBIconn, "select * from prices limit 1")
+```
+
+## Extraction examples RJDBC
+
+```{r e_rjdbc, message=FALSE}
+library(RSQLServer)
+# http://sqlblog.com/blogs/jamie_thomson/archive/2012/03/27/adventureworks2012-now-available-to-all-on-sql-azure.aspx
+RJDBCconn <- dbConnect(SQLServer(), 
+                       server="mhknbn2kdz.database.windows.net", 
+                       database="AdventureWorks2012",
+                       properties=list(user="sqlfamily", 
+                                       password="sqlf@m1ly"))
+dbGetQuery(RJDBCconn, "select top 1 ProductID, ProductNumber, Name from production.product;")
+```
+
+```{r e_rjdbc_disconnect, echo=FALSE, results='hide'}
+dbDisconnect(RJDBCconn)
+```
+
+## Extraction examples RODBC
+
+```{r e_rodbc, message=FALSE}
+library(RODBC)
+RODBCconn <- odbcConnect(dsn="psql_rdb", # predefined dsn
+                         uid="ruser",
+                         pwd="userpassr")
+sqlQuery(RODBCconn, "select * from prices limit 1")
+```
+
+## Extraction from non-databases
+
+- files
+
+    text, csv, excel, xml, json, spss, stata, sas, systat, hdf5, dbf...
+
+- online
+
+    tcp/ip binary, http, https, websocket...
+
+some packages to handle extraction:  
+  
+[data.table](https://github.com/Rdatatable/data.table), [readr](https://github.com/hadley/readr), [readxl](https://github.com/hadley/readxl), [jsonlite](https://github.com/jeroenooms/jsonlite), [XLconnect](https://github.com/miraisolutions/xlconnect), [foreign](http://cran.r-project.org/web/packages/foreign/index.html), [haven](https://github.com/hadley/haven), [RCurl](https://github.com/omegahat/RCurl), [curl](https://github.com/jeroenooms/curl), [httr](https://github.com/hadley/httr), [Rserve](https://rforge.net/Rserve/), [xml2](https://github.com/hadley/xml2), [XML](https://github.com/omegahat/XML)
+
+## Transformation
+
+[data.table](https://github.com/Rdatatable/data.table)
+
+  - Great syntax for faster development  
+  `FROM[ where, select|update, group ][ ... ]`
+  - Best performance and scalability
+  - CPU and memory efficient
+
+[dplyr](https://github.com/hadley/dplyr)
+
+  - Pipe-like syntax  
+  `FROM %>% fun() %>% ...`
+  - Great performance
+  - Can operate on remote data stores
+
+## Transformation examples
+
+```{r dt_populate, echo=FALSE}
+all.csv <- list.files(pattern = "\\.csv$")
+DT <- rbindlist(lapply(all.csv, fread))
+DT
+```
+
+- Filtering dataset on `prod_code` and selecting `time_code` and `quantity`
+- Select sum of `quantity` group by `prod_code`
+
+----
+
+[data.table](https://github.com/Rdatatable/data.table)
+
+```{r t_dt}
+library(data.table)
+# thanks to auto index feature
+# any subsequent filter on prod_code will be blazingly fast
+DT[prod_code %in% 10:11, .(time_code, quantity)]
+DT[, sum(quantity), prod_code]
+```
+
+----
+
+[dplyr](https://github.com/hadley/dplyr)
+
+```{r t_df, message=FALSE}
+library(dplyr)
+DF <- as.data.frame(DT)
+DF %>% 
+    filter(prod_code %in% 10:11) %>% 
+    select(time_code, quantity)
+DF %>% 
+    group_by(prod_code) %>% 
+    summarize(quantity = sum(quantity)) %>% 
+    select(prod_code, quantity)
+```
+
+## Loading
+
+`DT` object is your dataset in R session.  
+
+- DBI
+
+```{r l_dbi, results='hide'}
+dbWriteTable(DBIconn, "output_dbi", DT, append=TRUE, row.names=FALSE)
+```
+
+- RJDBC
+
+```{r l_rjdbc, eval=FALSE, results='hide'}
+# used community db is not writable
+# dbWriteTable(RJDBCconn, "output_jdbc", DT, append=TRUE, row.names=FALSE)
+```
+
+- RODBC
+
+```{r l_rodbc, results='hide'}
+sqlSave(RODBCconn, DT, "output_odbc", append=TRUE, rownames=FALSE)
+```
+
+# Higher level helper packages
+
+Fully optional as they usually just simplify the code/logic you need to handle when working with *core ETL packages*  
+
+## Database helpers
+
+- [dplyr](https://github.com/hadley/dplyr): data manipulation on remote DBI-compliant databases
+- [ETLUtils](https://github.com/jwijffels/ETLUtils): unify DBI, RJDBC, RODBC interface to R's [ff](http://ff.r-forge.r-project.org/) object
+- [dwtools](https://github.com/jangorecki/dwtools): unify DBI, RJDBC, RODBC interface
+- [db.r](https://github.com/yhat/db.r): schema exploration
+- [RODBCext](https://github.com/zozlak/RODBCext): *Parameterized queries extension for RODBC*
+
+## Transformation helpers
+
+- [sqldf](https://github.com/ggrothendieck/sqldf): query data.frames using SQL statements
+- [statar](https://github.com/matthieugomez/statar): *Stata*-like data manipulation
+- [splitstackshape](https://github.com/mrdwab/splitstackshape): higher level wrappers for split, stack and shape
+- [dwtools](https://github.com/jangorecki/dwtools): batch join, EAV processing, MDX-like queries
+
+## Processing helpers
+
+It is nice to monitor your processing. There are multiple logging packages.  
+
+- [logging](https://github.com/mfrasca/r-logging): logging to console, file, sentry server
+- [futile.logger](http://cran.r-project.org/web/packages/futile.logger/index.html): logging to files, console
+- [logR](https://github.com/jangorecki/logR): transactional logging to databases and email notifications
+- [loggr](https://github.com/smbache/loggr): logging to files, console
+- [logr](https://github.com/cubranic/logr): logging to files
+- [dtq](https://github.com/jangorecki/dtq): detailed auditing of data.table queries
+
+You can easily create your own logging as base R has good functions for that.  
+
+# Working example
+
+----
+
+sources:
+
+- sales quantity data dimensioned by product and time (day) - **multiple csv files**
+- product prices data dimensioned by product and time (month) - **postgres native driver**
+
+targets:  
+
+- sales data including sales value - **postgres odbc connection**
+- rename source files with loaded timestamp prefix - **multiple csv files**
+
+## Using core ETL packages
+
+```{r etl_dbi_dt, results='hide'}
+etl <- function(sales.dir = getwd()){
+    all.csv <- list.files(path = sales.dir, pattern = "\\.csv$")
+    if(length(all.csv)==0L) return(FALSE) # no new files
+    joinkey <- c("prod_code","month_code")
+    sales <- rbindlist(lapply(all.csv, fread))[
+        ][, month_code := substr(time_code,1L,6L)
+          ][, .SD,, joinkey]
+    prices <- setDT(dbGetQuery(DBIconn, "SELECT * FROM prices"), 
+                    key = joinkey)
+    sales[prices, value := quantity * price]
+    sqlSave(RODBCconn, sales, "sales", append=TRUE, rownames=FALSE)
+    file.rename(all.csv, paste(all.csv,paste0("loaded",as.character(Sys.time(),"%Y%m%d%H%M%S")), sep="."))
+}
+etl()
+# disconnect from database if not using it anymore
+dbDisconnect(DBIconn)
+odbcClose(RODBCconn)
+```
+
+## Enhancements and helpers
+
+- You can parallelize your code using built-in `parallel` package or [foreach](http://cran.r-project.org/web/packages/foreach/) package. It is mostly useful for time consuming **Extract** or **Load** because **Transform** is blazingly fast in R. Simplest usage of `parallel` package is to change `lapply` calls into `mclapply`.  
+
+```r
+sales <- setkeyv(rbindlist(lapply(all.csv, fread)), joinkey)
+# turns to
+sales <- setkeyv(rbindlist(mclapply(all.csv, fread)), joinkey)
+```
+
+Longer list of packages useful for parallelization is available in [CRAN Task View: High-Performance and Parallel Computing with R](http://cran.r-project.org/web/views/HighPerformanceComputing.html)
+
+----
+
+- Use helpers/wrappers - having multiple calls to same sequence of function calls you can wrap them into new single function and call the new one.    
+
+```r
+batch_csv_load <- function(csv.files, key = NULL){
+    setkeyv(rbindlist(lapply(csv.files, fread)), cols = key)
+}
+# an example
+sales <- setkeyv(rbindlist(lapply(all.csv, fread)), joinkey)
+# turns to
+sales <- batch_csv_load(all.csv, joinkey)
+```
+
+----
+
+- Log processing details - add desired status checks to your code, redirect its output to file or database. Below the most basic example of writing logs to csv.  
+
+```r
+write.log <- function(event, file="log.csv"){
+    write.table(data.table(timestamp = Sys.time(), event = event), 
+                file=file,
+                sep=",",
+                col.names=!file.exists(file), 
+                row.names=FALSE, 
+                append=file.exists(file))
+}
+# before your code
+write.log(event = "etl start")
+# after your code
+write.log(event = "etl end")
+```
+
+# Best practices
+
+## Use your favorite IDE
+
+Just for productivity. There are multiple of IDEs, RStudio seems to be leader, I haven't tried any other.
+
+- [RStudio](http://www.rstudio.com/products/RStudio/)
+- [Emacs](http://www.gnu.org/software/emacs/)
+- [Eclipse (StatET)](http://www.walware.de/goto/statet)
+
+## Organize code into R packages
+
+- well defined organization of code and metadata
+- easy version manage
+- easy dependency manage
+- standard documentation
+- easy extract docs to html, pdf
+- standard vignettes (tutorials)
+- easy deploy
+- easy integrate unit tests
+
+## Use source control
+
+I recommend [git](https://git-scm.com/), R integrates with git very well.  
+Git is lightweight and powerful.  
+
+Install package from shell:
+
+```sh
+git clone https://github.com/Rdatatable/data.table.git
+R CMD INSTALL data.table
+```
+
+Install package from R:
+
+```r
+library(devtools)
+install_github("Rdatatable/data.table")
+```
+
+## Unit tests
+
+Include unit test in the package `tests` directory.  
+Some helper frameworks:  
+
+- [testthat](https://github.com/hadley/testthat): *An R package to make testing fun*
+
+```r
+# /tests/testthat/test-script.R
+context("my tests of script")
+test_that("my tests of script", {
+  a <- function() 1
+  b <- 1
+  expect_identical(a(), b, info = "dummy test")
+})
+```
+
+- [unitizer](https://github.com/brodieG/unitizer): *Easy R Unit Tests*
+
+```r
+unitize("script.R")
+```
+
+## Continuous integration
+
+Simple setup example would be a github repo and [travis-ci](http://docs.travis-ci.com/user/languages/r/). Each commit to github repo will automatically build your package from source and run your unit tests against recent version.  
+You can also run package tests *check* locally anytime.  
+
+Check from shell:
+
+```sh
+R CMD check data.table
+```
+
+Check from R:
+
+```r
+library(devtools)
+check("data.table")
+```
+
+## Support
+
+R has a great community support served on the [stackoverflow](http://stackoverflow.com/questions/tagged/r) platform.  
+Before asking question you may want to read [How to make a great R reproducible example?](http://stackoverflow.com/questions/5963269/how-to-make-a-great-r-reproducible-example)  
+Read packages documentation.  
+
+# Bonus round
+
+## Business Intelligence
+
+Directly answer business questions to end-user or app:
+
+- [shiny](http://shiny.rstudio.com/): Interactive web application framework, including [shinydashboard](https://github.com/rstudio/shinydashboard)
+- [rapier](https://github.com/trestletech/rapier): *Turn your R code into a web API*
+- [opencpu](https://www.opencpu.org/): *The OpenCPU framework exposes a web API interfacing R, Latex and Pandoc*
+- [rpivotTable](https://github.com/smartinsightsfromdata/rpivotTable): *A R wrapper for the great* (javascript) *library pivottable*
+- [rmarkdown](https://github.com/rstudio/rmarkdown): automation of reports to various formats: markdown / html / word / pdf
+- [commonmark](https://github.com/jeroenooms/commonmark): wrapper around [cmark](https://github.com/jgm/cmark) markdown C library
+- [pander](https://github.com/Rapporter/pander): *An R Pandoc Writer*
+- [DeployR](http://deployr.revolutionanalytics.com/): *Add the power of R Analytics to any Application, Dashboard, Backend, etc.*
+
+## Thanks for audience
+
+**Where to start?**  
+
+Read packages documentation: *getting started* pages, *vignettes* (tutorials), wiki pages, manuals.  
+
+Take a datacamp course:  
+
+  - [Introduction to R](https://www.datacamp.com/courses/free-introduction-to-r)
+  - [data.table course](https://www.datacamp.com/courses/data-analysis-the-data-table-way?referrer=GitHubWiki)
+  - [dplyr course](https://www.datacamp.com/courses/dplyr-data-manipulation-r-tutorial)
+
+About author: [Jan Gorecki](https://github.com/jangorecki)
