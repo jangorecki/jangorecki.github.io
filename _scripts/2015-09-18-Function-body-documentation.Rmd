@@ -1,0 +1,165 @@
+---
+layout: post
+title: Utilize function body inline comments for documentation
+tags: R
+---
+
+```{r init, echo=FALSE}
+# knitr::knit("_scripts/2015-09-18-Function-body-documentation.Rmd", "_posts/2015-09-18-Function-body-documentation.md")
+```
+
+When writing a long function which has to deal with multiple checks and complex processes, it is valuable to put comments in the function body. This allows readers (including you) to catch the concept of process workflow without going into details.  
+I'm going to present a way how those comments can be nicely reused for the documentation purpose.  
+
+The post will be constructed based on the package development process. The inline function body comments will be utilized to generate a documentation file which stores a task list.  
+
+Package called `pkg` in it's initial, not yet functional version, just to produce a task roadmap.  
+
+```r
+# R/hello_script.R
+hello = function(){
+    # - [ ] should print hello
+    # - [ ] print system time
+    # - [ ] return string 'hello'
+}
+
+pretty_sum = function(x){
+    # - [ ] sum all elements
+    # - [ ] print rounding to 2 decimal places
+    # - [ ] return TRUE
+}
+```
+
+```r
+# R/bye_script.R
+bye = function(){
+    # - [ ] print bye
+    # - [ ] return system time
+}
+```
+
+I have `pkg` package which consists of 2 source files and 3 dummy functions.  
+
+To utilize above comments and produce a markdown task list I'm calling `make_doc` (defined below).  
+
+```r
+make_doc(dest = "inst/doc/doc.md")
+```
+
+There is no output, but expected markdown file is saved in the `dest` path. Its current contents looks like:
+
+```markdown
+
+### bye_script.R
+
+#### bye
+
+ - [ ] print bye
+ - [ ] return system time
+
+### hello_script.R
+
+#### hello
+
+ - [ ] should print hello
+ - [ ] print system time
+ - [ ] return string 'hello'
+
+#### pretty_sum
+
+ - [ ] sum all elements
+ - [ ] print rounding to 2 decimal places
+ - [ ] return TRUE
+
+```
+
+Which is pretty well readable both for humans and markdown parsers.  
+We have tasks grouped into functions, and functions grouped into source files.  
+
+In the next step I'm filling some of the tasks to reproduce updated documentation.  
+
+```r
+# R/hello_script.R
+hello = function(){
+    # - [x] should print hello
+    print("hello")
+    # - [x] print system time
+    print(Sys.time())
+    # - [x] return string 'hello'
+    "hello"
+}
+
+pretty_sum = function(x){
+    # - [x] sum all elements
+    x = sum(x)
+    # - [ ] print rounding to 2 decimal places
+    # - [x] return TRUE
+    TRUE
+}
+```
+
+```r
+# R/bye_script.R
+bye = function(){
+    # - [x] print bye
+    print("bye")
+    # - [ ] return system time
+}
+```
+
+We can see that not all the tasks are completed. Lets make the documentation again.
+
+```r
+make_doc(dest = "inst/doc/doc.md")
+```
+
+It gets updated as expected, instead of putting `doc.md` body here I will paste the image from `doc.md` parsed by [gist.github.com](https://gist.github.com) to html.  
+
+![gist_make_doc](https://cloud.githubusercontent.com/assets/3627377/9963521/902c29fc-5e23-11e5-81a8-4bdf94d1333a.png)
+
+Again we have tasks grouped into functions, and functions grouped into source files and the mysterious body of `make_doc` and underlying `get_comments` below.  
+It catches only comments starting with `# - [ ] ` or `# - [x] ` so you don't have to worry about any others you've made.  
+Thanks to Konrad Rudolph and Bob Rudis for helping with the comments extraction!  
+
+```r
+get_comments = function(filename){
+    is_assign = function(expr) as.character(expr) %in% c("<-", "<<-", "=", "assign")
+    is_function = function(expr) is.call(expr) && is_assign(expr[[1L]]) && is.call(expr[[3L]]) && expr[[3L]][[1L]] == quote(`function`)
+    src = parse(filename, keep.source = TRUE)
+    functions = Filter(is_function, src)
+    fun_names = as.character(lapply(functions, `[[`, 2L))
+    # - [x] extract all comments
+    r = setNames(lapply(attr(functions, "srcref"), grep, pattern = "^\\s*#", value = TRUE), fun_names)
+    # - [x] remove leading spaces and comment sign '#'
+    r = lapply(r, function(x) sub(pattern = "^\\s*#", replacement = "", x = x))
+    # - [x] keep only markdown checkboxes like " - [ ] " or " - [x] "
+    r = lapply(r, function(x) x[nchar(x) >= 7L & substr(x, 1L, 7L) %in% c(" - [ ] "," - [x] ")])
+    # - [x] return only non empty results
+    r[as.logical(sapply(r, length))]
+}
+
+make_doc = function(path = "R", files, package, dest){
+    if(!missing(package)) path = system.file(path, package=package)
+    stopifnot(dir.exists(path))
+    if(missing(files)) files = list.files(path, pattern = "\\.R$")
+    if(!length(files)){
+        warning(paste0("No files to process in ",path,"."))
+        return(invisible())
+    }
+    if(!all(sapply(file.path(path, files), file.exists))) stop(paste0("Processing stopped as some files not exists: ", paste(files[!sapply(file.path(path, files), file.exists)], collapse=", "),"."))
+    r = setNames(lapply(file.path(path, files), get_comments), files)
+    r = r[as.logical(sapply(r, length))]
+    if(missing(dest)) return(r)
+    if(!dir.exists(dirname(dest))) dir.create(dirname(dest), recursive=TRUE)
+    if(file.exists(dest)) file.rename(dest, paste0(dest,"_backup"))
+    invisible(lapply(names(r), function(filename){
+        cat(c("",paste("###", filename)), sep = "\n", file = dest, append = file.exists(dest))
+        lapply(names(r[[filename]]), function(funname){
+            cat(c("",paste("####", funname),""), sep = "\n", file = dest, append = TRUE)
+            cat(r[[filename]][[funname]], sep = "\n", file = dest, append = TRUE)
+        })
+    }))
+    if(file.exists(paste0(dest,"_backup"))) file.remove(paste0(dest,"_backup"))
+    invisible(dest)
+}
+```
