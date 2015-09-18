@@ -46,7 +46,7 @@ make_doc(dest = "inst/doc/doc.md")
 
 There is no output, but expected markdown file is saved in the `dest` path. Its current contents looks like:
 
-```markdown
+```
 
 ### bye_script.R
 
