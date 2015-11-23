@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Scaling data.table using index
-tags: R, data.table, rserve
+tags: R data.table rserve
 ---
 
 ```{r render_cmd, echo=FALSE}
