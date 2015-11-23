@@ -1,0 +1,222 @@
+---
+layout: post
+title: Scaling data.table using index
+tags: R, data.table, rserve
+---
+
+```{r render_cmd, echo=FALSE}
+# Rscript -e 'knitr::knit("_scripts/2015-11-23-data.table-index.Rmd", "_posts/2015-11-23-data.table-index.md")'
+```
+
+R can handle fairly big data working on a single machine, 2B (2E9) rows and couple of columns require about 100 GB of memory.  
+This is already well enough to care about performance.  
+With this post I'm going discuss scalability of filter queries.  
+
+----
+
+The *index* has been introduced to data.table in 1.9.4. It is also known as *secondary keys*. Unlike with *key*, a single data.table can have multiple indexes.  
+It basically store additional vector of rows order as data.table attribute.  
+Sounds really simple, it is even better because user does not have use them in any special way - use of index is automatically handled in data.table.  
+And the performance gains are big enough to write a post on that.  
+
+----
+
+What you should know about data.table index (as of 2015-11-23):  
+
+- index will be used when subsetting dataset with `==` or `%in%` on a single variable
+- by default if *index* for a variable is not present on filtering, it is automatically created and used
+- indexes are lost if you change the order of data
+- you can check if you are using index with `options(datatable.verbose=TRUE)`
+
+Above features are likely to be improved in future.  
+
+- also important to mention, there is an open FR to automatically utilize index when doing *unkeyed join* (new feature in 1.9.6) - using new *on* argument. So in future version user will be able to leverage mighty performance of indexes for joining datasets.  
+
+----
+
+Brief look at the structure:
+
+```{r intro}
+library(data.table)
+op = options(datatable.verbose=TRUE,
+             datatable.auto.index=TRUE)
+dt = data.table(a=letters[c(3L,1L,2L)])
+set2keyv(dt, "a")
+attr(dt, "index")
+dt[a=="b"]
+dt[a %in% c("b","c")]
+options(op)
+```
+
+----
+
+So how it looks in practice. I will compare base R data.frame, data.table and indexed data.table. You can try other tool, I doubt if you will get better performance in any other tool, not just other R package.  
+The volumes tested are 1e7, 5e7 and 1e8 rows. Should works fine on 8GB memory.  
+
+Some helper function.  
+
+```{r helpers}
+# easy control usage of index and verbose
+with_index = function(x, auto.index=TRUE, verbose=TRUE){
+    op=options("datatable.auto.index"=auto.index, "datatable.verbose"=verbose)
+    on.exit(op)
+    x
+}
+```
+
+### 1e7
+
+```{r run_1e7}
+set.seed(123)
+n = 1e7
+dt = data.table(high = sample(n*0.9, n, TRUE), normal = sample(n*0.1, n, TRUE), low = sample(10, n, TRUE), value = rnorm(n))
+df = as.data.frame(dt)
+set2keyv(dt, "high")
+high.filter = sample(dt$high, 1L)
+df.r = df[df$high==high.filter,]
+dt.r = with_index(dt[high==high.filter])
+dti.r = with_index(dt[high==high.filter], auto.index = FALSE)
+all.equal(as.data.table(df.r), dt.r) && all.equal(dt.r, dti.r)
+
+library(microbenchmark)
+mb = list()
+mb[["1e7"]] = microbenchmark(times = 10L,
+    data.frame = df[df$high==high.filter,],
+    data.table = with_index(dt[high==high.filter], auto.index = FALSE, verbose = FALSE),
+    data.table.index = with_index(dt[high==high.filter], auto.index = TRUE, verbose = FALSE)
+)
+print(mb[["1e7"]])
+```
+
+### 5e7
+
+```{r run_5e7, echo=FALSE}
+set.seed(123)
+n = 5e7
+dt = data.table(high = sample(n*0.9, n, TRUE), normal = sample(n*0.1, n, TRUE), low = sample(10, n, TRUE), value = rnorm(n))
+df = as.data.frame(dt)
+set2keyv(dt, "high")
+high.filter = sample(dt$high, 1L)
+mb[["5e7"]] = microbenchmark(times = 10L,
+    data.frame = df[df$high==high.filter,],
+    data.table = with_index(dt[high==high.filter], auto.index = FALSE, verbose = FALSE),
+    data.table.index = with_index(dt[high==high.filter], auto.index = TRUE, verbose = FALSE)
+)
+print(mb[["5e7"]])
+```
+
+### 1e8
+
+```{r run_1e8, echo=FALSE}
+set.seed(123)
+n = 1e8
+dt = data.table(high = sample(n*0.9, n, TRUE), normal = sample(n*0.1, n, TRUE), low = sample(10, n, TRUE), value = rnorm(n))
+df = as.data.frame(dt)
+set2keyv(dt, "high")
+high.filter = sample(dt$high, 1L)
+mb[["1e8"]] = microbenchmark(times = 10L,
+    data.frame = df[df$high==high.filter,],
+    data.table = with_index(dt[high==high.filter], auto.index = FALSE, verbose = FALSE),
+    data.table.index = with_index(dt[high==high.filter], auto.index = TRUE, verbose = FALSE)
+)
+print(mb[["1e8"]])
+```
+
+## Timing summary
+
+How fast is data.table index and how it scales?  
+
+```{r timing, echo=FALSE}
+timing = rbindlist(lapply(names(mb), function(count) as.data.table(mb[[count]])[, count := count][, .(mean_seconds=round(mean(time)*1e-9,4L)), .(count, expr)]))
+cat("mean seconds\n")
+print(setcolorder(dcast(timing, formula = expr ~ count, value.var = "mean_seconds"), c("expr", names(mb))))
+# relative
+cat("relative\n")
+timing.rel = timing[expr=="data.table.index"][timing, .(count = i.count, expr = i.expr, relative = i.mean_seconds/mean_seconds), on = "count"]
+print(pretty.timing.rel <- setcolorder(dcast(timing.rel, formula = expr ~ count, value.var = "relative"), c("expr", names(mb))))
+```
+
+```{r plot_timing, echo=FALSE}
+invisible({
+    plot(x = NA, y = NA, 
+         xaxt = "n",
+         xlim = range(as.integer(timing$count)), ylim = range(timing$mean_seconds), 
+         xlab = "rows", ylab = "mean seconds")
+    axis(1, at=sort(as.integer(timing$count)))
+    cols=c("data.frame"=1L, "data.table"=2L, "data.table.index"=3L)
+    timing[expr=="data.frame", lines(x = as.integer(count), y = mean_seconds, col = cols[[expr[1L]]])]
+    timing[expr=="data.table", lines(x = as.integer(count), y = mean_seconds, col = cols[[expr[1L]]])]
+    timing[expr=="data.table.index", lines(x = as.integer(count), y = mean_seconds, col = cols[[expr[1L]]])]
+    legend("topleft", legend = names(cols), col = cols, lty = 1L)
+})
+```
+
+```{r timing_comment, echo=FALSE, results='asis'}
+# this will handle case when chunk 'run_1e8' is eval=FALSE and will use 5e7 as the biggest
+max_nr = names(pretty.timing.rel)[length(pretty.timing.rel)]
+cat(sprintf("On the %s rows the indexed data.table solution is ~%.2f times faster than data.frame and ~%.2f times faster than non-index data.table.", max_nr, pretty.timing.rel[expr=="data.frame"][[max_nr]], pretty.timing.rel[expr=="data.table"][[max_nr]]), "\n", sep="")
+```
+
+----
+
+## Scaling data.table index even further for big data?  
+
+If you don't have a single machine good enough to handle a data.table in memory you can stil preserve the data.table's index performance.  
+You need to split your data into separate instances of R, index each of them. Then just rbind results queried from each instance.  
+That is pretty easy with [Rserve](https://github.com/s-u/Rserve), but since this is a topic for separate post I will leave you with basic working example.  
+
+```{r rserve_config}
+library(Rserve)
+library(RSclient)
+port = 6311:6312
+```
+
+```{r shutdown_running_nodes, echo=FALSE, results='hide'}
+# shutdown any running nodes
+l = lapply(setNames(port, port), function(port) tryCatch(RSconnect(port = port), error = function(e) e, warning = function(w) w))
+invisible(lapply(l, function(rsc) if(inherits(rsc, "sockconn")) RSshutdown(rsc)))
+```
+
+```{r run_rserve, results='hide'}
+# start nodes
+sapply(port, function(port) Rserve(debug = FALSE, port = port, args = c("--no-save")))
+# connect nodes
+rscl = lapply(setNames(port, port), function(port) RS.connect(port=port))
+```
+
+```{r populate_data_on_nodes}
+# populate data, 5M rows in each node
+qcall = quote({
+    stopifnot(suppressPackageStartupMessages(require("data.table", character.only = TRUE, quietly = TRUE)))
+    set.seed(123)
+    n = 5e6
+    x <- data.table(high = sample(n*0.9, n, TRUE), normal = sample(n*0.1, n, TRUE), low = sample(10, n, TRUE), value = rnorm(n))
+    high.filter <- sample(x$high, 1L)
+    set2keyv(x, "high")
+    TRUE
+})
+sapply(rscl, RS.eval, qcall, lazy=FALSE)
+```
+
+```{r use_index_on_nodes}
+# query using index, capture data.table verbose messages
+qcall = quote({
+    op = options(datatable.auto.index=TRUE, datatable.verbose=TRUE)
+    prnt = capture.output(r <- x[high==high.filter])
+    options(op)
+    list(verbose = prnt, results = r)
+})
+l = lapply(rscl, RS.eval, qcall, lazy=FALSE)
+# datatable.verbose from each node
+invisible(lapply(lapply(l, `[[`, "verbose"), cat, sep="\n"))
+# results from each node
+lapply(l, `[[`, "results")
+```
+
+```{r shutdown_nodes, ref.label="shutdown_running_nodes", echo=FALSE}
+```
+
+## Reproducibility
+
+You can find script of blog post in Rmarkdown format in the blog github repo.  
+If you have any comments feel free to put them into github issue.  
