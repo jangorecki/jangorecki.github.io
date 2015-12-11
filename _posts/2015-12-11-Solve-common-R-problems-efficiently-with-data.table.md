@@ -6,16 +6,14 @@ tags: R data.table
 
 
 
-# Solve common R problems efficiently with data.table
+I was recently browsing stackoverflow.com (often called *SO*) for the most voted questions under [R tag](https://stackoverflow.com/questions/tagged/r?sort=votes).  
+To my surprise, many questions on the first page were quite well addressed with the data.table package. I found a few other questions that could benefit from a data.table answer, therefore went ahead and answered them.  
+In this post, I’d like to summarise them along with benchmarks (where possible) and my comments if any.  
+Many answers under highly voted questions seem to have been posted a while back. data.table is quite actively developed and has had tons of improvements (in terms of speed and memory usage) over the  recent years. It might therefore be entirely possible that some of those answers will have even better performance by now.  
 
-I was recently browsing stackoverflow.com (often called *SO*) most voted questions on [R tag](https://stackoverflow.com/questions/tagged/r?sort=votes).  
-I got surprised that many questions from the first page were well addressed with data.table R package, I find few other that could be so I've added answers.  
-Here I would like to summarize them, quote some benchmarks, put my comment on some, etc.  
-Many of the answers in highly voted questions were posted a while back. As data.table is quite actively developed and there were tons of improvements over the recent years you might except that some of it's answers will have even better performance now.  
+## 50 highest voted questions under R tag
 
-## 50 highest voted on R tag
-
-Below is the full list of top 50 questions and marked those which has some a data.table solution that can speed up the solution.  
+Here’s the list of top 50 questions. I’ve marked those for which a data.table answer is available (which is usually quite performant).  
 
 
 |  I| Number of votes|Question title                                               |Use data.table solution |
@@ -71,7 +69,7 @@ Below is the full list of top 50 questions and marked those which has some a dat
 | 49|             112|How can 2 strings be concatenated in R                       |                        |
 | 50|             112|How to organize large R programs?                            |                        |
 
-Below are the chosen answers where data.table can be applied. Each one supplied with the usage and timing copied from the linked answer. Follow the answer link if you want to see full reproducible example.    
+Below are the chosen answers where data.table can be applied. Each one supplied with the usage and timing copied from the linked answer. Click on the question title to view SO question or follow the answer link for a reproducible example and benchmark details.  
 
 ### [How to sort a dataframe by column(s)?](http://stackoverflow.com/q/1296646/2490497)
 
@@ -194,7 +192,7 @@ set(DT, j = 'b', value = NULL)
 ```
 [mnel's answer](http://stackoverflow.com/a/13371575/2490497)
 
-No timing here as that process is almost instant, you can expect less memory consumption dropping columns with `:=` operator or `set` function as it is made by reference, unlike using regular data.frame methods where during that process the dataset needs to be copied in memory.  
+No timing here as that process is almost instant, you can expect less memory consumption dropping columns with `:=` operator or `set` function as it is made by reference. In R version earlier than 3.1 regular data.frame methods would copy your data in memory.  
 
 ### [Quickly reading very large tables as dataframes in R](http://stackoverflow.com/q/1727772/2490497)
 
@@ -220,9 +218,9 @@ Timing in seconds:
 
 ### [Remove rows with NAs in data.frame](http://stackoverflow.com/q/4862178/2490497)
 
-There is no data.table specific answer for that question at the moment.  
-You can obviously delete rows but you should not expect performance impovement over data.frame methods other than faster detection of rows to delete.  
-Yet there is an open FR in data.table repo for *Delete rows by reference* [data.table#635](https://github.com/Rdatatable/data.table/issues/635) which would benefit mainly in memory efficiency for *delete rows* cases.  
+There is `na.omit` data.table method which can be handly for that using `cols` argument.  
+You should not expect performance impovement over data.frame methods other than faster detection of rows to delete (`NA`s in this example).  
+Additional memory efficiency is expected in future thanks to [Delete rows by reference - data.table#635](https://github.com/Rdatatable/data.table/issues/635).  
 
 ### [Drop factor levels in a subsetted data frame](http://stackoverflow.com/q/1195826/2490497)
 
@@ -291,7 +289,7 @@ setnames(dt, c("good", "better"))
 
 No timing here, you should not expect speed up but you can expect less memory consumption due to fact that `setnames` update names by reference.  
 
-## Didn't found the problem you are looking for?
+## Didn't find a problem you are looking for?
 
 It is very likely as I just listed the questions from the first page of the most voted - so among 50 questions only.  
 Before you ask new question on SO it may be wise to search for existing one because there is quite a lot already answered.  
