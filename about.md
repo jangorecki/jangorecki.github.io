@@ -6,15 +6,15 @@ permalink: /about/
 
 - DW/BI developer
 
-  - Data modeling
+  - Dimensional data modelling
   - SQL
-  - SQL Procedural Language
+  - Procedural SQL
 
 - R developer
 
-  - package development
-  - high performance data processing
-  - time series data analysis
+  - R packages development
+  - High performance data processing
+  - Time series data analysis
   - Rmarkdown reports
   - Shiny web dashboards
 
@@ -28,5 +28,5 @@ permalink: /about/
 
 ### Contact me
 
-`J.Gorecki@wit.edu.pl`  
+`j.gorecki@wit.edu.pl`  
 `jangorecki@protonmail.ch`
