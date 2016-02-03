@@ -6,25 +6,27 @@ permalink: /about/
 
 - DW/BI developer
 
-  - data modeling
+  - Data modeling
   - SQL
-  - TSQL
+  - SQL Procedural Language
 
 - R developer
 
   - package development
   - high performance data processing
   - time series data analysis
-  - rmarkdown reports
-  - shiny web dashboards
+  - Rmarkdown reports
+  - Shiny web dashboards
 
 - Infrastructure
 
-  - ubuntu server
-  - virtualbox
-  - git
-  - continuous integration
+  - Ubuntu Server
+  - Docker
+  - VirtualBox
+  - Git
+  - Continuous Integration
 
 ### Contact me
 
-`J.Gorecki@wit.edu.pl` / `jangorecki@protonmail.ch`
+`J.Gorecki@wit.edu.pl`  
+`jangorecki@protonmail.ch`
