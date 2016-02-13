@@ -9,14 +9,16 @@ permalink: /about/
   - Dimensional data modelling
   - SQL
   - Procedural SQL
+  - ETL packages
+  - Reporting tools
 
 - R developer
 
   - R packages development
   - High performance data processing
   - Time series data analysis
-  - Rmarkdown reports
-  - Shiny web dashboards
+  - Rmarkdown automated reporting
+  - Shiny framework web dashboards
 
 - Infrastructure
 
@@ -28,5 +30,4 @@ permalink: /about/
 
 ### Contact me
 
-`j.gorecki@wit.edu.pl`  
-`jangorecki@protonmail.ch`
+`j.gorecki@wit.edu.pl || jangorecki@protonmail.ch`
